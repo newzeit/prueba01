@@ -1,6 +1,6 @@
 <?php
 /**
- * Backend Proxy API para Diagnóstico Estructurado de Errores con OpenAI
+ * Backend Proxy API para Diagnóstico Estructurado de Errores con OpenAI & Google Gemini
  */
 
 declare(strict_types=1);
@@ -8,7 +8,7 @@ declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-OpenAI-Key');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-OpenAI-Key, X-Google-Key, X-Gemini-Key, X-AI-Provider');
 
 // Responder a preflight requests de CORS
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -41,9 +41,18 @@ function loadEnv(string $path): array {
 $envFile = __DIR__ . '/.env';
 $envVars = loadEnv($envFile);
 
+// Configuración OpenAI
 $openaiApiKeyEnv = getenv('OPENAI_API_KEY') ?: ($envVars['OPENAI_API_KEY'] ?? '');
 $openaiApiUrl = getenv('OPENAI_API_URL') ?: ($envVars['OPENAI_API_URL'] ?? 'https://api.openai.com/v1');
 $openaiModelDefault = getenv('OPENAI_MODEL') ?: ($envVars['OPENAI_MODEL'] ?? 'gpt-4o-mini');
+
+// Configuración Google Gemini
+$geminiApiKeyEnv = getenv('GEMINI_API_KEY') ?: (getenv('GOOGLE_API_KEY') ?: ($envVars['GEMINI_API_KEY'] ?? ($envVars['GOOGLE_API_KEY'] ?? '')));
+$geminiApiUrl = getenv('GEMINI_API_URL') ?: ($envVars['GEMINI_API_URL'] ?? 'https://generativelanguage.googleapis.com/v1beta');
+$geminiModelDefault = getenv('GEMINI_MODEL') ?: ($envVars['GEMINI_MODEL'] ?? 'gemini-1.5-flash');
+
+// Proveedor por defecto
+$defaultProvider = getenv('AI_PROVIDER') ?: ($envVars['AI_PROVIDER'] ?? 'auto');
 
 // Endpoint de estado
 $action = $_GET['action'] ?? '';
@@ -51,34 +60,40 @@ if ($action === 'status') {
     echo json_encode([
         'status' => 'online',
         'openai_configured' => !empty($openaiApiKeyEnv),
-        'default_model' => $openaiModelDefault,
-        'api_url' => $openaiApiUrl,
+        'gemini_configured' => !empty($geminiApiKeyEnv),
+        'default_provider' => $defaultProvider,
+        'default_openai_model' => $openaiModelDefault,
+        'default_gemini_model' => $geminiModelDefault,
         'php_version' => PHP_VERSION,
         'server_time' => date('c'),
     ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     exit;
 }
 
-// Endpoint para guardar clave API localmente en .env
+// Endpoint para guardar configuración de claves en .env
 if ($action === 'save_key' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $rawInput = file_get_contents('php://input');
     $data = json_decode($rawInput, true) ?: [];
-    $newKey = trim($data['api_key'] ?? '');
-    $newModel = trim($data['model'] ?? $openaiModelDefault);
 
-    if ($newKey !== '' && !str_starts_with($newKey, 'sk-')) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Formato de API Key no válido. Debe comenzar con sk-'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
+    $newOpenAiKey = isset($data['openai_key']) ? trim((string)$data['openai_key']) : (isset($data['api_key']) ? trim((string)$data['api_key']) : $openaiApiKeyEnv);
+    $newGeminiKey = isset($data['gemini_key']) ? trim((string)$data['gemini_key']) : (isset($data['google_key']) ? trim((string)$data['google_key']) : $geminiApiKeyEnv);
+    $newProvider = trim((string)($data['provider'] ?? $defaultProvider));
+    $newOpenAiModel = trim((string)($data['openai_model'] ?? $openaiModelDefault));
+    $newGeminiModel = trim((string)($data['gemini_model'] ?? $geminiModelDefault));
 
-    $content = "# Configuración de OpenAI para Diagnóstico de Errores\n";
-    $content .= "OPENAI_API_KEY={$newKey}\n";
+    $content = "# Configuración de Proveedores de IA para Diagnóstico de Errores\n";
+    $content .= "AI_PROVIDER={$newProvider}\n\n";
+    $content .= "# Google Gemini API\n";
+    $content .= "GEMINI_API_KEY={$newGeminiKey}\n";
+    $content .= "GEMINI_MODEL=" . ($newGeminiModel ?: 'gemini-1.5-flash') . "\n";
+    $content .= "GEMINI_API_URL=" . ($geminiApiUrl ?: 'https://generativelanguage.googleapis.com/v1beta') . "\n\n";
+    $content .= "# OpenAI API\n";
+    $content .= "OPENAI_API_KEY={$newOpenAiKey}\n";
+    $content .= "OPENAI_MODEL=" . ($newOpenAiModel ?: 'gpt-4o-mini') . "\n";
     $content .= "OPENAI_API_URL=" . ($openaiApiUrl ?: 'https://api.openai.com/v1') . "\n";
-    $content .= "OPENAI_MODEL=" . ($newModel ?: 'gpt-4o-mini') . "\n";
 
     if (@file_put_contents($envFile, $content) !== false) {
-        echo json_encode(['success' => true, 'message' => 'Configuración guardada en .env'], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['success' => true, 'message' => 'Configuración guardada correctamente en .env'], JSON_UNESCAPED_UNICODE);
     } else {
         http_response_code(500);
         echo json_encode(['error' => 'No se pudo escribir en el archivo .env'], JSON_UNESCAPED_UNICODE);
@@ -102,9 +117,10 @@ if (!is_array($input)) {
     exit;
 }
 
-$errorText = trim($input['error_text'] ?? '');
-$contextTag = trim($input['context'] ?? 'General');
-$requestedModel = trim($input['model'] ?? $openaiModelDefault);
+$errorText = trim((string)($input['error_text'] ?? ''));
+$contextTag = trim((string)($input['context'] ?? 'General'));
+$requestedProvider = trim((string)($input['provider'] ?? ($_SERVER['HTTP_X_AI_PROVIDER'] ?? 'auto')));
+$requestedModel = trim((string)($input['model'] ?? ''));
 
 if ($errorText === '') {
     http_response_code(400);
@@ -112,31 +128,80 @@ if ($errorText === '') {
     exit;
 }
 
-// Determinar API key (encabezado HTTP o .env)
-$headerKey = $_SERVER['HTTP_X_OPENAI_KEY'] ?? '';
-$apiKey = !empty($headerKey) ? trim($headerKey) : $openaiApiKeyEnv;
+// Claves pasadas por headers HTTP (permiten usar claves temporales de localStorage)
+$headerOpenAiKey = $_SERVER['HTTP_X_OPENAI_KEY'] ?? '';
+$headerGeminiKey = $_SERVER['HTTP_X_GOOGLE_KEY'] ?? ($_SERVER['HTTP_X_GEMINI_KEY'] ?? '');
 
-// Si hay clave API, llamar a OpenAI
-if (!empty($apiKey)) {
-    $openaiResult = callOpenAiDiagnostic($apiKey, $openaiApiUrl, $requestedModel, $errorText, $contextTag);
-    if ($openaiResult['success']) {
+$effectiveOpenAiKey = !empty($headerOpenAiKey) ? trim($headerOpenAiKey) : $openaiApiKeyEnv;
+$effectiveGeminiKey = !empty($headerGeminiKey) ? trim($headerGeminiKey) : $geminiApiKeyEnv;
+
+// Determinar qué proveedor ejecutar
+$targetProvider = 'heuristic';
+
+if ($requestedProvider === 'gemini') {
+    $targetProvider = !empty($effectiveGeminiKey) ? 'gemini' : 'heuristic';
+} elseif ($requestedProvider === 'openai') {
+    $targetProvider = !empty($effectiveOpenAiKey) ? 'openai' : 'heuristic';
+} else {
+    // Modo automático: dar prioridad al proveedor que tenga clave configurada
+    if (!empty($effectiveGeminiKey)) {
+        $targetProvider = 'gemini';
+    } elseif (!empty($effectiveOpenAiKey)) {
+        $targetProvider = 'openai';
+    } else {
+        $targetProvider = 'heuristic';
+    }
+}
+
+// Ejecutar proveedor seleccionado
+if ($targetProvider === 'gemini') {
+    $modelToUse = !empty($requestedModel) && str_starts_with($requestedModel, 'gemini') ? $requestedModel : $geminiModelDefault;
+    $geminiResult = callGeminiDiagnostic($effectiveGeminiKey, $geminiApiUrl, $modelToUse, $errorText, $contextTag);
+
+    if ($geminiResult['success']) {
         echo json_encode([
             'success' => true,
-            'source' => 'openai',
-            'model' => $requestedModel,
-            'data' => $openaiResult['data']
+            'source' => 'gemini',
+            'provider' => 'Google Gemini',
+            'model' => $modelToUse,
+            'data' => $geminiResult['data']
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         exit;
     } else {
-        // Si falló OpenAI (ej. quota, clave incorrecta), devolvemos el error o fallback
-        $apiError = $openaiResult['error'] ?? 'Error desconocido en OpenAI';
-        
-        // Si el usuario quiere ver el error directamente cuando provee una clave inválida
+        // Fallback heurístico en caso de error de Google
+        $apiError = $geminiResult['error'] ?? 'Error desconocido en Google Gemini API';
         $fallback = getHeuristicDiagnostic($errorText, $contextTag);
         echo json_encode([
             'success' => true,
             'source' => 'heuristic_fallback',
-            'warning' => "OpenAI API error: {$apiError}. Se utilizó el motor heurístico de contingencia.",
+            'provider' => 'Motor de Contingencia (Fallback)',
+            'warning' => "Google Gemini API error: {$apiError}. Se utilizó el motor heurístico local.",
+            'model' => 'heuristic-engine',
+            'data' => $fallback
+        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        exit;
+    }
+} elseif ($targetProvider === 'openai') {
+    $modelToUse = !empty($requestedModel) && (str_starts_with($requestedModel, 'gpt') || str_starts_with($requestedModel, 'o1')) ? $requestedModel : $openaiModelDefault;
+    $openaiResult = callOpenAiDiagnostic($effectiveOpenAiKey, $openaiApiUrl, $modelToUse, $errorText, $contextTag);
+
+    if ($openaiResult['success']) {
+        echo json_encode([
+            'success' => true,
+            'source' => 'openai',
+            'provider' => 'OpenAI',
+            'model' => $modelToUse,
+            'data' => $openaiResult['data']
+        ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        exit;
+    } else {
+        $apiError = $openaiResult['error'] ?? 'Error desconocido en OpenAI API';
+        $fallback = getHeuristicDiagnostic($errorText, $contextTag);
+        echo json_encode([
+            'success' => true,
+            'source' => 'heuristic_fallback',
+            'provider' => 'Motor de Contingencia (Fallback)',
+            'warning' => "OpenAI API error: {$apiError}. Se utilizó el motor heurístico local.",
             'model' => 'heuristic-engine',
             'data' => $fallback
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -144,17 +209,132 @@ if (!empty($apiKey)) {
     }
 }
 
-// Si NO hay clave API configurada, utilizar el motor heurístico local
+// Si no hay claves configuradas o se solicitó modo heurístico
 $diagnostic = getHeuristicDiagnostic($errorText, $contextTag);
 
 echo json_encode([
     'success' => true,
     'source' => 'heuristic',
-    'notice' => 'Diagnóstico generado con el motor heurístico local integrado. Para diagnósticos con IA avanzada en tiempo real, configure su OPENAI_API_KEY en .env o en Ajustes.',
+    'provider' => 'Motor Heurístico Local',
+    'notice' => 'Diagnóstico generado con el motor heurístico integrado. Para diagnósticos con IA avanzada en tiempo real, configure su Google Gemini API Key o OpenAI API Key en Ajustes.',
     'model' => 'local-rules-engine',
     'data' => $diagnostic
 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 exit;
+
+/**
+ * Llamada a Google Gemini API (generateContent)
+ */
+function callGeminiDiagnostic(string $apiKey, string $apiUrl, string $model, string $errorText, string $contextTag): array {
+    $endpoint = rtrim($apiUrl, '/') . "/models/{$model}:generateContent?key=" . urlencode($apiKey);
+
+    $systemInstruction = <<<PROMPT
+Eres un Ingeniero Principal de Infraestructura, DevOps y SRE especializado en diagnóstico de incidentes, logs y fallos de software.
+Analiza con rigor técnico el fragmento de log, código de error HTTP o fallo de terminal proporcionado por el usuario.
+
+Debes responder ÚNICAMENTE con un objeto JSON válido con la siguiente estructura exacta:
+{
+  "summary": "Título conciso y descriptivo del incidente (máx 60 caracteres)",
+  "root_cause": "Qué originó el error en una o dos frases claras, directas y técnicas.",
+  "severity": "Crítico" | "Advertencia" | "Info",
+  "affected_component": "Componente, servicio o capa afectada (ej. Nginx Upstream, Driver MySQL, CORS Middleware, etc.)",
+  "action_plan": [
+    {
+      "step": 1,
+      "title": "Título corto y directo de la acción",
+      "description": "Explicación clara de por qué y cómo aplicar esta solución.",
+      "command": "Comando bash de terminal o fragmento de código concreto para solucionar el problema (puede ser null si es solo conceptual)",
+      "type": "terminal" | "code" | "config"
+    }
+  ],
+  "verification_command": "Un único comando de terminal directo y rápido para comprobar si ya se solucionó el fallo (ej. sudo nginx -t && sudo systemctl reload nginx)",
+  "verification_explanation": "Qué salida esperar de dicho comando si todo quedó solucionado satisfactoriamente.",
+  "preventive_tip": "Recomendación técnica para evitar que este incidente se repita en producción."
+}
+
+Reglas estrictas:
+- El idioma del diagnóstico debe ser exclusivamente Español.
+- La severidad debe ser estrictamente uno de: "Crítico", "Advertencia", "Info".
+- El plan de acción debe contener de 2 a 4 pasos muy concretos, con comandos de terminal ejecutables o snippets precisos.
+- El comando de verificación debe ser un comando ejecutable directo en bash/shell.
+- NO agregues texto antes ni después del bloque JSON.
+PROMPT;
+
+    $userContent = "Contexto / Tag: [{$contextTag}]\n\nFragmento de Error / Log / Terminal:\n```\n{$errorText}\n```";
+
+    $payload = [
+        'systemInstruction' => [
+            'parts' => [
+                ['text' => $systemInstruction]
+            ]
+        ],
+        'contents' => [
+            [
+                'role' => 'user',
+                'parts' => [
+                    ['text' => $userContent]
+                ]
+            ]
+        ],
+        'generationConfig' => [
+            'responseMimeType' => 'application/json',
+            'temperature' => 0.1
+        ]
+    ];
+
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'User-Agent: ErrorDiagnosticProxy/1.0'
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_TIMEOUT => 35,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_SSL_VERIFYPEER => true
+    ]);
+
+    $response = curl_exec($ch);
+    $curlError = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($curlError !== '') {
+        return ['success' => false, 'error' => "cURL error conectando a Google Gemini: {$curlError}"];
+    }
+
+    if ($httpCode !== 200) {
+        $jsonErr = json_decode((string)$response, true);
+        $msg = $jsonErr['error']['message'] ?? "Google API HTTP {$httpCode}: {$response}";
+        return ['success' => false, 'error' => $msg];
+    }
+
+    $decoded = json_decode((string)$response, true);
+    $rawText = $decoded['candidates'][0]['content']['parts'][0]['text'] ?? null;
+    if ($rawText === null) {
+        return ['success' => false, 'error' => 'Respuesta vacía o inesperada de Google Gemini API'];
+    }
+
+    $rawText = trim($rawText);
+    if (str_starts_with($rawText, '```')) {
+        $rawText = preg_replace('/^```(?:json)?\s*/i', '', $rawText);
+        $rawText = preg_replace('/\s*```$/', '', $rawText);
+    }
+
+    $data = json_decode($rawText, true);
+    if (!is_array($data)) {
+        return ['success' => false, 'error' => 'Google Gemini no devolvió un JSON estructurado válido'];
+    }
+
+    $data['root_cause'] = $data['root_cause'] ?? 'Causa raíz no identificada claramente.';
+    $data['severity'] = in_array($data['severity'] ?? '', ['Crítico', 'Advertencia', 'Info'], true) ? $data['severity'] : 'Advertencia';
+    $data['action_plan'] = is_array($data['action_plan'] ?? null) ? $data['action_plan'] : [];
+    $data['verification_command'] = $data['verification_command'] ?? 'echo "Sin comando de verificación disponible"';
+
+    return ['success' => true, 'data' => $data];
+}
 
 /**
  * Llamada a la API de OpenAI con JSON Schema estructurado
@@ -227,7 +407,7 @@ PROMPT;
     curl_close($ch);
 
     if ($curlError !== '') {
-        return ['success' => false, 'error' => "cURL error: {$curlError}"];
+        return ['success' => false, 'error' => "cURL error conectando a OpenAI: {$curlError}"];
     }
 
     if ($httpCode !== 200) {
@@ -248,7 +428,6 @@ PROMPT;
         return ['success' => false, 'error' => 'La IA no devolvió un JSON válido'];
     }
 
-    // Normalizar campos obligatorios
     $data['root_cause'] = $data['root_cause'] ?? 'Causa raíz no identificada claramente.';
     $data['severity'] = in_array($data['severity'] ?? '', ['Crítico', 'Advertencia', 'Info'], true) ? $data['severity'] : 'Advertencia';
     $data['action_plan'] = is_array($data['action_plan'] ?? null) ? $data['action_plan'] : [];
@@ -467,6 +646,6 @@ function getHeuristicDiagnostic(string $text, string $context): array {
         ],
         'verification_command' => 'uptime && free -h',
         'verification_explanation' => 'Comprobar que el sistema mantenga una carga estable y memoria RAM suficiente.',
-        'preventive_tip' => 'Configura tu OPENAI_API_KEY en la configuración de la app para obtener un análisis semántico exhaustivo impulsado por IA para cualquier tipo de stack tecnológico.'
+        'preventive_tip' => 'Configura tu Google Gemini API Key o OpenAI API Key en la configuración de la app para obtener un análisis semántico exhaustivo impulsado por IA.'
     ];
 }

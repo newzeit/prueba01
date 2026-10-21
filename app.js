@@ -1,5 +1,5 @@
 /**
- * LogTrace AI - Frontend Controller
+ * LogTrace AI - Frontend Controller (Google Gemini & OpenAI Support)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     lucide.createIcons();
   }
 
-  // Elementos DOM
+  // Elementos DOM Principales
   const errorInput = document.getElementById('errorInput');
   const charCount = document.getElementById('charCount');
   const lineCount = document.getElementById('lineCount');
@@ -17,13 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnClearInput = document.getElementById('btnClearInput');
   const btnPasteClipboard = document.getElementById('btnPasteClipboard');
   const contextTagsContainer = document.getElementById('contextTagsContainer');
-  const providerNotice = document.getElementById('providerNotice');
+  const providerPillsContainer = document.getElementById('providerPillsContainer');
+  const btnQuickConfig = document.getElementById('btnQuickConfig');
   const providerNoticeText = document.getElementById('providerNoticeText');
-  const serverStatusBadge = document.getElementById('serverStatusBadge');
   const statusDot = document.getElementById('statusDot');
   const statusLabel = document.getElementById('statusLabel');
 
-  // Paneles
+  // Paneles de Visualización
   const emptyStateCard = document.getElementById('emptyStateCard');
   const loadingCard = document.getElementById('loadingCard');
   const loadingStatusText = document.getElementById('loadingStatusText');
@@ -34,6 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const severityBadge = document.getElementById('severityBadge');
   const severityText = document.getElementById('severityText');
   const componentBadge = document.getElementById('componentBadge');
+  const providerBadge = document.getElementById('providerBadge');
+  const providerBadgeText = document.getElementById('providerBadgeText');
   const issueSummary = document.getElementById('issueSummary');
   const rootCauseText = document.getElementById('rootCauseText');
   const actionPlanSteps = document.getElementById('actionPlanSteps');
@@ -52,9 +54,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCancelSettings = document.getElementById('btnCancelSettings');
   const btnSaveSettings = document.getElementById('btnSaveSettings');
   const btnSaveKeyServer = document.getElementById('btnSaveKeyServer');
-  const inputApiKey = document.getElementById('inputApiKey');
-  const selectModel = document.getElementById('selectModel');
-  const btnToggleKeyVisibility = document.getElementById('btnToggleKeyVisibility');
+
+  // Inputs Modal Google Gemini
+  const inputGeminiApiKey = document.getElementById('inputGeminiApiKey');
+  const selectGeminiModel = document.getElementById('selectGeminiModel');
+  const btnToggleGeminiKey = document.getElementById('btnToggleGeminiKey');
+
+  // Inputs Modal OpenAI
+  const inputOpenAiApiKey = document.getElementById('inputOpenAiApiKey');
+  const selectOpenAiModel = document.getElementById('selectOpenAiModel');
+  const btnToggleOpenAiKey = document.getElementById('btnToggleOpenAiKey');
+
+  // Proveedor Preferido Modal
+  const selectDefaultProvider = document.getElementById('selectDefaultProvider');
 
   // Historial Modal
   const historyModal = document.getElementById('historyModal');
@@ -69,8 +81,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Estado de la Aplicación
   let activeContext = 'General';
+  let activeProvider = localStorage.getItem('logtrace_provider') || 'auto';
   let currentDiagnosticData = null;
   let loadingInterval = null;
+
+  // Cargar llaves y modelos guardados en localStorage
+  inputGeminiApiKey.value = localStorage.getItem('logtrace_gemini_key') || '';
+  inputOpenAiApiKey.value = localStorage.getItem('logtrace_openai_key') || '';
+  selectGeminiModel.value = localStorage.getItem('logtrace_gemini_model') || 'gemini-1.5-flash';
+  selectOpenAiModel.value = localStorage.getItem('logtrace_openai_model') || 'gpt-4o-mini';
+  selectDefaultProvider.value = activeProvider;
+
+  // Sincronizar UI de Provider Pills
+  function updateProviderPillsUI() {
+    document.querySelectorAll('.provider-pill').forEach(btn => {
+      if (btn.dataset.provider === activeProvider) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+  updateProviderPillsUI();
+
+  providerPillsContainer.addEventListener('click', (e) => {
+    const btn = e.target.closest('.provider-pill');
+    if (!btn) return;
+    activeProvider = btn.dataset.provider;
+    localStorage.setItem('logtrace_provider', activeProvider);
+    updateProviderPillsUI();
+    checkServerStatus();
+    showToast(`Motor de IA fijado a: ${btn.textContent.trim()}`);
+  });
+
+  if (btnQuickConfig) {
+    btnQuickConfig.addEventListener('click', () => {
+      settingsModal.classList.remove('hidden');
+    });
+  }
 
   // Ejemplos predeterminados
   const quickExamples = {
@@ -88,13 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Cargar configuración guardada
-  const savedApiKey = localStorage.getItem('logtrace_api_key') || '';
-  const savedModel = localStorage.getItem('logtrace_model') || 'gpt-4o-mini';
-  inputApiKey.value = savedApiKey;
-  selectModel.value = savedModel;
-
-  // Actualizar contadores del textarea
+  // Contadores del textarea
   function updateCounters() {
     const val = errorInput.value;
     charCount.textContent = `${val.length} caracteres`;
@@ -108,7 +150,6 @@ document.addEventListener('DOMContentLoaded', () => {
   contextTagsContainer.addEventListener('click', (e) => {
     const btn = e.target.closest('.tag-btn');
     if (!btn) return;
-
     document.querySelectorAll('.tag-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     activeContext = btn.dataset.context;
@@ -134,7 +175,6 @@ document.addEventListener('DOMContentLoaded', () => {
         errorInput.value = example.text;
         setContext(example.context);
         updateCounters();
-        // Ejecutar inmediatamente para máxima comodidad de prueba
         triggerDiagnosis();
       }
     });
@@ -165,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
     triggerDiagnosis();
   });
 
-  // Atajo de teclado: Ctrl+Enter o Cmd+Enter en el textarea
+  // Atajo de teclado: Ctrl+Enter o Cmd+Enter
   errorInput.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
@@ -182,18 +222,30 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Activar estado de carga
     setLoadingState(true);
 
     try {
-      const apiKey = localStorage.getItem('logtrace_api_key') || '';
-      const model = localStorage.getItem('logtrace_model') || 'gpt-4o-mini';
+      const geminiKey = localStorage.getItem('logtrace_gemini_key') || '';
+      const openAiKey = localStorage.getItem('logtrace_openai_key') || '';
+      const geminiModel = localStorage.getItem('logtrace_gemini_model') || 'gemini-1.5-flash';
+      const openAiModel = localStorage.getItem('logtrace_openai_model') || 'gpt-4o-mini';
 
       const headers = {
         'Content-Type': 'application/json'
       };
-      if (apiKey) {
-        headers['X-OpenAI-Key'] = apiKey;
+      if (geminiKey) headers['X-Google-Key'] = geminiKey;
+      if (openAiKey) headers['X-OpenAI-Key'] = openAiKey;
+      if (activeProvider) headers['X-AI-Provider'] = activeProvider;
+
+      // Determinar modelo a enviar si aplica
+      let modelToSend = '';
+      if (activeProvider === 'gemini') {
+        modelToSend = geminiModel;
+      } else if (activeProvider === 'openai') {
+        modelToSend = openAiModel;
+      } else {
+        // En auto, si hay geminiKey preferir geminiModel, sino openAiModel
+        modelToSend = geminiKey ? geminiModel : openAiModel;
       }
 
       const response = await fetch('api.php', {
@@ -202,7 +254,8 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           error_text: errorText,
           context: activeContext,
-          model: model
+          provider: activeProvider,
+          model: modelToSend
         })
       });
 
@@ -268,6 +321,21 @@ document.addEventListener('DOMContentLoaded', () => {
     issueSummary.textContent = data.summary || 'Diagnóstico de Incidente Técnico';
     componentBadge.textContent = data.affected_component || activeContext;
 
+    // Proveedor
+    const prov = result.provider || (result.source === 'gemini' ? 'Google Gemini' : (result.source === 'openai' ? 'OpenAI' : 'Motor Heurístico'));
+    providerBadgeText.textContent = prov;
+
+    if (result.source === 'gemini') {
+      providerBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center gap-1';
+      providerBadge.querySelector('i').setAttribute('data-lucide', 'sparkles');
+    } else if (result.source === 'openai') {
+      providerBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1';
+      providerBadge.querySelector('i').setAttribute('data-lucide', 'cpu');
+    } else {
+      providerBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1';
+      providerBadge.querySelector('i').setAttribute('data-lucide', 'shield');
+    }
+
     // Severidad: Crítico / Advertencia / Info
     const sev = (data.severity || 'Advertencia').toLowerCase();
     severityText.textContent = data.severity || 'Advertencia';
@@ -306,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
         commandHtml = `
           <div class="mt-3 relative group">
             <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 font-mono text-xs text-slate-200 overflow-x-auto flex items-start justify-between gap-3">
-              <pre class="whitespace-pre font-mono text-xs text-indigo-300"><code>${escapeHtml(step.command)}</code></pre>
+              <pre class="whitespace-pre font-mono text-xs text-sky-300"><code>${escapeHtml(step.command)}</code></pre>
               <button type="button" class="btn-copy-code shrink-0 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] font-sans flex items-center gap-1 transition-colors" data-code="${escapeAttribute(step.command)}">
                 <i data-lucide="copy" class="w-3 h-3"></i>
                 <span>Copiar</span>
@@ -318,7 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       stepDiv.innerHTML = `
         <div class="flex items-start gap-3">
-          <div class="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-mono font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+          <div class="w-6 h-6 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30 font-mono font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
             ${stepNumber}
           </div>
           <div class="flex-1">
@@ -340,28 +408,28 @@ document.addEventListener('DOMContentLoaded', () => {
     preventiveText.textContent = data.preventive_tip || 'Mantén registros centralizados y alertas automatizadas para prevenir tiempos de inactividad.';
 
     // Metadatos de la fuente
-    if (result.source === 'openai') {
+    if (result.source === 'gemini') {
+      analysisSourceText.textContent = `Fuente: Google Gemini (${result.model})`;
+    } else if (result.source === 'openai') {
       analysisSourceText.textContent = `Fuente: OpenAI API (${result.model})`;
     } else if (result.source === 'heuristic_fallback') {
-      analysisSourceText.textContent = `Fuente: Motor de Contingencia (Fallback)`;
+      analysisSourceText.textContent = `Fuente: Motor de Contingencia (Fallback Local)`;
     } else {
       analysisSourceText.textContent = `Fuente: Motor Heurístico Integrado`;
     }
 
     analysisTimestampText.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    // Re-inicializar iconos Lucide
     if (window.lucide) {
       lucide.createIcons();
     }
 
-    // Scroll suave hacia los resultados en móviles
     if (window.innerWidth < 1024) {
       resultsCard.scrollIntoView({ behavior: 'smooth' });
     }
   }
 
-  // Delegación de eventos para copiar comandos del plan de acción
+  // Copiar comandos individuales
   actionPlanSteps.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn-copy-code');
     if (!btn) return;
@@ -419,11 +487,11 @@ document.addEventListener('DOMContentLoaded', () => {
         summary: result.data.summary || 'Error diagnosticado',
         severity: result.data.severity || 'Advertencia',
         context: context,
+        provider: result.provider || result.source,
         error_preview: errorText.slice(0, 100) + (errorText.length > 100 ? '...' : ''),
         error_full: errorText,
         result: result
       };
-      // Conservar los últimos 15
       history.unshift(item);
       if (history.length > 15) history.pop();
       localStorage.setItem('logtrace_history', JSON.stringify(history));
@@ -447,15 +515,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       historyList.innerHTML = history.map(item => `
-        <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-indigo-500/50 cursor-pointer transition-all group" data-id="${item.id}">
+        <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-sky-500/50 cursor-pointer transition-all group" data-id="${item.id}">
           <div class="flex items-center justify-between text-xs mb-1">
-            <span class="font-bold text-slate-200 group-hover:text-indigo-300 truncate mr-2">${escapeHtml(item.summary)}</span>
+            <span class="font-bold text-slate-200 group-hover:text-sky-300 truncate mr-2">${escapeHtml(item.summary)}</span>
             <span class="text-[10px] text-slate-400 shrink-0">${escapeHtml(item.date)}</span>
           </div>
           <div class="text-[11px] text-slate-400 truncate font-mono">${escapeHtml(item.error_preview)}</div>
           <div class="mt-2 flex items-center justify-between">
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${item.severity === 'Crítico' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'}">${escapeHtml(item.severity)}</span>
-            <span class="text-[10px] text-indigo-400 group-hover:underline">Cargar &rarr;</span>
+            <div class="flex items-center gap-1.5">
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${item.severity === 'Crítico' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'}">${escapeHtml(item.severity)}</span>
+              <span class="text-[10px] text-slate-400">${escapeHtml(item.provider || '')}</span>
+            </div>
+            <span class="text-[10px] text-sky-400 group-hover:underline">Cargar &rarr;</span>
           </div>
         </div>
       `).join('');
@@ -502,30 +573,54 @@ document.addEventListener('DOMContentLoaded', () => {
   btnCloseSettings.addEventListener('click', () => settingsModal.classList.add('hidden'));
   btnCancelSettings.addEventListener('click', () => settingsModal.classList.add('hidden'));
 
-  btnToggleKeyVisibility.addEventListener('click', () => {
-    inputApiKey.type = inputApiKey.type === 'password' ? 'text' : 'password';
+  btnToggleGeminiKey.addEventListener('click', () => {
+    inputGeminiApiKey.type = inputGeminiApiKey.type === 'password' ? 'text' : 'password';
+  });
+
+  btnToggleOpenAiKey.addEventListener('click', () => {
+    inputOpenAiApiKey.type = inputOpenAiApiKey.type === 'password' ? 'text' : 'password';
   });
 
   btnSaveSettings.addEventListener('click', () => {
-    const key = inputApiKey.value.trim();
-    const model = selectModel.value;
-    localStorage.setItem('logtrace_api_key', key);
-    localStorage.setItem('logtrace_model', model);
+    const gKey = inputGeminiApiKey.value.trim();
+    const oKey = inputOpenAiApiKey.value.trim();
+    const gModel = selectGeminiModel.value;
+    const oModel = selectOpenAiModel.value;
+    const defProvider = selectDefaultProvider.value;
+
+    localStorage.setItem('logtrace_gemini_key', gKey);
+    localStorage.setItem('logtrace_openai_key', oKey);
+    localStorage.setItem('logtrace_gemini_model', gModel);
+    localStorage.setItem('logtrace_openai_model', oModel);
+    localStorage.setItem('logtrace_provider', defProvider);
+
+    activeProvider = defProvider;
+    updateProviderPillsUI();
     settingsModal.classList.add('hidden');
-    showToast('Preferencias guardadas');
+    showToast('Preferencias de IA guardadas');
     checkServerStatus();
   });
 
   btnSaveKeyServer.addEventListener('click', async () => {
-    const key = inputApiKey.value.trim();
-    const model = selectModel.value;
+    const gKey = inputGeminiApiKey.value.trim();
+    const oKey = inputOpenAiApiKey.value.trim();
+    const gModel = selectGeminiModel.value;
+    const oModel = selectOpenAiModel.value;
+    const defProvider = selectDefaultProvider.value;
+
     try {
       btnSaveKeyServer.disabled = true;
       btnSaveKeyServer.textContent = 'Guardando en servidor...';
       const res = await fetch('api.php?action=save_key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: key, model: model })
+        body: JSON.stringify({
+          gemini_key: gKey,
+          openai_key: oKey,
+          gemini_model: gModel,
+          openai_model: oModel,
+          provider: defProvider
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al guardar en el servidor');
@@ -535,7 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast(e.message, 'error');
     } finally {
       btnSaveKeyServer.disabled = false;
-      btnSaveKeyServer.textContent = 'Guardar en .env del servidor';
+      btnSaveKeyServer.textContent = 'Guardar ambas en .env del servidor';
     }
   });
 
@@ -544,16 +639,30 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch('api.php?action=status');
       const data = await res.json();
-      const localKey = localStorage.getItem('logtrace_api_key');
+      const localGeminiKey = localStorage.getItem('logtrace_gemini_key');
+      const localOpenAiKey = localStorage.getItem('logtrace_openai_key');
+
+      const hasGemini = data.gemini_configured || !!localGeminiKey;
+      const hasOpenAi = data.openai_configured || !!localOpenAiKey;
 
       if (data.status === 'online') {
-        const hasOpenAi = data.openai_configured || !!localKey;
-        statusDot.className = hasOpenAi ? 'w-2 h-2 rounded-full bg-emerald-400' : 'w-2 h-2 rounded-full bg-amber-400';
-        statusLabel.textContent = hasOpenAi ? `OpenAI Listo (${data.default_model})` : 'Modo Heurístico Activo';
-        
-        providerNoticeText.textContent = hasOpenAi 
-          ? `Listo con OpenAI (${localStorage.getItem('logtrace_model') || data.default_model}).`
-          : `Modo local activo. Añade tu API Key para análisis de modelos avanzados.`;
+        if (hasGemini && hasOpenAi) {
+          statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          statusLabel.textContent = 'Gemini + OpenAI Listos';
+          providerNoticeText.textContent = `Listo con Gemini y OpenAI (${activeProvider.toUpperCase()}).`;
+        } else if (hasGemini) {
+          statusDot.className = 'w-2 h-2 rounded-full bg-sky-400';
+          statusLabel.textContent = `Google Gemini Listo`;
+          providerNoticeText.textContent = `Listo con Google Gemini (${localStorage.getItem('logtrace_gemini_model') || data.default_gemini_model}).`;
+        } else if (hasOpenAi) {
+          statusDot.className = 'w-2 h-2 rounded-full bg-indigo-400';
+          statusLabel.textContent = `OpenAI Listo`;
+          providerNoticeText.textContent = `Listo con OpenAI (${localStorage.getItem('logtrace_openai_model') || data.default_openai_model}).`;
+        } else {
+          statusDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+          statusLabel.textContent = 'Modo Heurístico Activo';
+          providerNoticeText.textContent = `Modo local activo. Ingresa tu API Key de Google o OpenAI para análisis completo.`;
+        }
       }
     } catch (e) {
       statusDot.className = 'w-2 h-2 rounded-full bg-rose-500';

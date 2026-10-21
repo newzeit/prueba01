@@ -356,7 +356,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Renderizar Diagnóstico en el Panel de Resultados
   function renderDiagnostic(result) {
-    const data = result.data;
+    const data = result.data || {};
+    
+    // Asegurar que el estado vacío y de carga estén ocultos y se muestre la tarjeta de resultados
+    emptyStateCard.classList.add('hidden');
+    loadingCard.classList.add('hidden');
     resultsCard.classList.remove('hidden');
 
     // Título y Componente
@@ -365,39 +369,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Proveedor
     const prov = result.provider || (result.source === 'gemini' ? 'Google Gemini' : (result.source === 'openai' ? 'OpenAI' : 'Motor Heurístico'));
-    providerBadgeText.textContent = prov;
-
+    let provIcon = 'shield';
+    let provClass = 'bg-slate-800 text-slate-400 border border-slate-700';
     if (result.source === 'gemini') {
-      providerBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center gap-1';
-      providerBadge.querySelector('i').setAttribute('data-lucide', 'sparkles');
+      provIcon = 'sparkles';
+      provClass = 'bg-sky-500/10 text-sky-400 border border-sky-500/20';
     } else if (result.source === 'openai') {
-      providerBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1';
-      providerBadge.querySelector('i').setAttribute('data-lucide', 'cpu');
-    } else {
-      providerBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1';
-      providerBadge.querySelector('i').setAttribute('data-lucide', 'shield');
+      provIcon = 'cpu';
+      provClass = 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20';
     }
+    providerBadge.className = `px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1.5 ${provClass}`;
+    providerBadge.innerHTML = `<i data-lucide="${provIcon}" class="w-3.5 h-3.5"></i><span id="providerBadgeText">${escapeHtml(prov)}</span>`;
 
     // Severidad: Crítico / Advertencia / Info
     const sev = (data.severity || 'Advertencia').toLowerCase();
-    severityText.textContent = data.severity || 'Advertencia';
-
-    severityBadge.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border';
-    severityGlow.className = 'absolute top-0 left-0 right-0 h-1';
+    let sevIcon = 'alert-triangle';
+    let sevClass = 'severity-warning';
+    let glowClass = 'glow-warning';
 
     if (sev.includes('crít') || sev.includes('crit')) {
-      severityBadge.classList.add('severity-critical');
-      severityGlow.classList.add('glow-critical');
-      severityBadge.querySelector('i').setAttribute('data-lucide', 'alert-octagon');
+      sevIcon = 'alert-octagon';
+      sevClass = 'severity-critical';
+      glowClass = 'glow-critical';
     } else if (sev.includes('info')) {
-      severityBadge.classList.add('severity-info');
-      severityGlow.classList.add('glow-info');
-      severityBadge.querySelector('i').setAttribute('data-lucide', 'info');
-    } else {
-      severityBadge.classList.add('severity-warning');
-      severityGlow.classList.add('glow-warning');
-      severityBadge.querySelector('i').setAttribute('data-lucide', 'alert-triangle');
+      sevIcon = 'info';
+      sevClass = 'severity-info';
+      glowClass = 'glow-info';
     }
+
+    severityBadge.className = `px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 border ${sevClass}`;
+    severityBadge.innerHTML = `<i data-lucide="${sevIcon}" class="w-3.5 h-3.5"></i><span id="severityText">${escapeHtml(data.severity || 'Advertencia')}</span>`;
+    severityGlow.className = `absolute top-0 left-0 right-0 h-1 ${glowClass}`;
 
     // Causa Raíz
     rootCauseText.textContent = data.root_cause || 'Causa no determinada.';

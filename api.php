@@ -70,6 +70,83 @@ if ($action === 'status') {
     exit;
 }
 
+// Endpoint para verificar conexión con las APIs de IA
+if ($action === 'test_connection' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $rawInput = file_get_contents('php://input');
+    $data = json_decode($rawInput, true) ?: [];
+    $provider = trim((string)($data['provider'] ?? 'gemini'));
+    $key = trim((string)($data['key'] ?? ''));
+    $model = trim((string)($data['model'] ?? ''));
+
+    $t0 = microtime(true);
+
+    if ($provider === 'gemini') {
+        $testKey = !empty($key) ? $key : $geminiApiKeyEnv;
+        $testModel = !empty($model) ? $model : $geminiModelDefault;
+        if (empty($testKey)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'No se proporcionó API Key de Google Gemini.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $res = callGeminiDiagnostic($testKey, $geminiApiUrl, $testModel, 'ping test: return {"summary": "OK"}', 'Ping');
+        $latency = round((microtime(true) - $t0) * 1000);
+        if ($res['success']) {
+            echo json_encode([
+                'success' => true,
+                'provider' => 'Google Gemini',
+                'model' => $testModel,
+                'latency_ms' => $latency,
+                'message' => "¡Conexión exitosa con Google Gemini API en {$latency}ms!"
+            ], JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'provider' => 'Google Gemini',
+                'model' => $testModel,
+                'latency_ms' => $latency,
+                'error' => $res['error'] ?? 'Fallo de conexión desconocido con Google Gemini'
+            ], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    } elseif ($provider === 'openai') {
+        $testKey = !empty($key) ? $key : $openaiApiKeyEnv;
+        $testModel = !empty($model) ? $model : $openaiModelDefault;
+        if (empty($testKey)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'No se proporcionó API Key de OpenAI.'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $res = callOpenAiDiagnostic($testKey, $openaiApiUrl, $testModel, 'ping test: return {"summary": "OK"}', 'Ping');
+        $latency = round((microtime(true) - $t0) * 1000);
+        if ($res['success']) {
+            echo json_encode([
+                'success' => true,
+                'provider' => 'OpenAI',
+                'model' => $testModel,
+                'latency_ms' => $latency,
+                'message' => "¡Conexión exitosa con OpenAI API en {$latency}ms!"
+            ], JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'provider' => 'OpenAI',
+                'model' => $testModel,
+                'latency_ms' => $latency,
+                'error' => $res['error'] ?? 'Fallo de conexión desconocido con OpenAI'
+            ], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Proveedor desconocido.'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Endpoint para guardar configuración de claves en .env
 if ($action === 'save_key' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $rawInput = file_get_contents('php://input');
@@ -128,6 +205,8 @@ if ($errorText === '') {
     exit;
 }
 
+$startTime = microtime(true);
+
 // Claves pasadas por headers HTTP (permiten usar claves temporales de localStorage)
 $headerOpenAiKey = $_SERVER['HTTP_X_OPENAI_KEY'] ?? '';
 $headerGeminiKey = $_SERVER['HTTP_X_GOOGLE_KEY'] ?? ($_SERVER['HTTP_X_GEMINI_KEY'] ?? '');
@@ -157,13 +236,17 @@ if ($requestedProvider === 'gemini') {
 if ($targetProvider === 'gemini') {
     $modelToUse = !empty($requestedModel) ? $requestedModel : $geminiModelDefault;
     $geminiResult = callGeminiDiagnostic($effectiveGeminiKey, $geminiApiUrl, $modelToUse, $errorText, $contextTag);
+    $latency = round((microtime(true) - $startTime) * 1000);
 
     if ($geminiResult['success']) {
         echo json_encode([
             'success' => true,
+            'is_live_ai' => true,
             'source' => 'gemini',
-            'provider' => 'Google Gemini',
+            'provider' => 'Google Gemini (En Vivo)',
             'model' => $modelToUse,
+            'latency_ms' => $latency,
+            'api_endpoint' => 'generativelanguage.googleapis.com',
             'data' => $geminiResult['data']
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         exit;
@@ -173,24 +256,32 @@ if ($targetProvider === 'gemini') {
         $fallback = getHeuristicDiagnostic($errorText, $contextTag);
         echo json_encode([
             'success' => true,
+            'is_live_ai' => false,
             'source' => 'heuristic_fallback',
-            'provider' => 'Motor de Contingencia (Fallback)',
-            'warning' => "Google Gemini API error: {$apiError}. Se utilizó el motor heurístico local.",
+            'provider' => 'Motor de Contingencia (Simulado)',
+            'attempted_provider' => 'Google Gemini',
+            'fallback_reason' => $apiError,
+            'warning' => "Google Gemini API error: {$apiError}. Se utilizó el motor heurístico local de prueba.",
             'model' => 'heuristic-engine',
+            'latency_ms' => $latency,
             'data' => $fallback
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         exit;
     }
 } elseif ($targetProvider === 'openai') {
-    $modelToUse = !empty($requestedModel) && (str_starts_with($requestedModel, 'gpt') || str_starts_with($requestedModel, 'o1')) ? $requestedModel : $openaiModelDefault;
+    $modelToUse = !empty($requestedModel) && (str_starts_with($requestedModel, 'gpt') || str_starts_with($requestedModel, 'o1') || str_starts_with($requestedModel, 'o3')) ? $requestedModel : $openaiModelDefault;
     $openaiResult = callOpenAiDiagnostic($effectiveOpenAiKey, $openaiApiUrl, $modelToUse, $errorText, $contextTag);
+    $latency = round((microtime(true) - $startTime) * 1000);
 
     if ($openaiResult['success']) {
         echo json_encode([
             'success' => true,
+            'is_live_ai' => true,
             'source' => 'openai',
-            'provider' => 'OpenAI',
+            'provider' => 'OpenAI (En Vivo)',
             'model' => $modelToUse,
+            'latency_ms' => $latency,
+            'api_endpoint' => 'api.openai.com',
             'data' => $openaiResult['data']
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         exit;
@@ -199,10 +290,14 @@ if ($targetProvider === 'gemini') {
         $fallback = getHeuristicDiagnostic($errorText, $contextTag);
         echo json_encode([
             'success' => true,
+            'is_live_ai' => false,
             'source' => 'heuristic_fallback',
-            'provider' => 'Motor de Contingencia (Fallback)',
-            'warning' => "OpenAI API error: {$apiError}. Se utilizó el motor heurístico local.",
+            'provider' => 'Motor de Contingencia (Simulado)',
+            'attempted_provider' => 'OpenAI',
+            'fallback_reason' => $apiError,
+            'warning' => "OpenAI API error: {$apiError}. Se utilizó el motor heurístico local de prueba.",
             'model' => 'heuristic-engine',
+            'latency_ms' => $latency,
             'data' => $fallback
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         exit;
@@ -211,13 +306,16 @@ if ($targetProvider === 'gemini') {
 
 // Si no hay claves configuradas o se solicitó modo heurístico
 $diagnostic = getHeuristicDiagnostic($errorText, $contextTag);
+$latency = round((microtime(true) - $startTime) * 1000);
 
 echo json_encode([
     'success' => true,
+    'is_live_ai' => false,
     'source' => 'heuristic',
-    'provider' => 'Motor Heurístico Local',
-    'notice' => 'Diagnóstico generado con el motor heurístico integrado. Para diagnósticos con IA avanzada en tiempo real, configure su Google Gemini API Key o OpenAI API Key en Ajustes.',
+    'provider' => 'Motor Heurístico Local (Prueba Offline)',
+    'notice' => 'Diagnóstico generado con el motor heurístico de prueba (sin consumir API). Para diagnósticos con IA avanzada en tiempo real, configure su Google Gemini API Key o OpenAI API Key en Ajustes.',
     'model' => 'local-rules-engine',
+    'latency_ms' => $latency,
     'data' => $diagnostic
 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 exit;

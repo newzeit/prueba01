@@ -36,6 +36,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const componentBadge = document.getElementById('componentBadge');
   const providerBadge = document.getElementById('providerBadge');
   const providerBadgeText = document.getElementById('providerBadgeText');
+  const originNoticeBox = document.getElementById('originNoticeBox');
+  const originDot = document.getElementById('originDot');
+  const originTitle = document.getElementById('originTitle');
+  const originSubtitle = document.getElementById('originSubtitle');
+  const originLatency = document.getElementById('originLatency');
   const issueSummary = document.getElementById('issueSummary');
   const rootCauseText = document.getElementById('rootCauseText');
   const actionPlanSteps = document.getElementById('actionPlanSteps');
@@ -60,12 +65,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const selectGeminiModel = document.getElementById('selectGeminiModel');
   const inputCustomGeminiModel = document.getElementById('inputCustomGeminiModel');
   const btnToggleGeminiKey = document.getElementById('btnToggleGeminiKey');
+  const btnTestGeminiKey = document.getElementById('btnTestGeminiKey');
+  const geminiTestStatus = document.getElementById('geminiTestStatus');
 
   // Inputs Modal OpenAI
   const inputOpenAiApiKey = document.getElementById('inputOpenAiApiKey');
   const selectOpenAiModel = document.getElementById('selectOpenAiModel');
   const inputCustomOpenAiModel = document.getElementById('inputCustomOpenAiModel');
   const btnToggleOpenAiKey = document.getElementById('btnToggleOpenAiKey');
+  const btnTestOpenAiKey = document.getElementById('btnTestOpenAiKey');
+  const openAiTestStatus = document.getElementById('openAiTestStatus');
 
   // Proveedor Preferido Modal
   const selectDefaultProvider = document.getElementById('selectDefaultProvider');
@@ -401,6 +410,30 @@ document.addEventListener('DOMContentLoaded', () => {
     severityBadge.innerHTML = `<i data-lucide="${sevIcon}" class="w-3.5 h-3.5"></i><span id="severityText">${escapeHtml(data.severity || 'Advertencia')}</span>`;
     severityGlow.className = `absolute top-0 left-0 right-0 h-1 ${glowClass}`;
 
+    // Origen de la respuesta (IA en vivo vs prueba simulada/fallback)
+    if (result.is_live_ai) {
+      originNoticeBox.className = 'mt-3.5 p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-emerald-950/40 border-emerald-500/40 text-emerald-300';
+      originDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 animate-ping';
+      originTitle.textContent = `🟢 IA EN VIVO: ${result.provider}`;
+      originSubtitle.textContent = `• Respuesta generada en tiempo real por ${result.api_endpoint || 'Google AI Studio'} (${result.model})`;
+      originLatency.className = 'font-mono text-[11px] px-2.5 py-1 rounded bg-slate-900 border border-emerald-500/30 text-emerald-300 shrink-0 self-start sm:self-auto';
+      originLatency.textContent = `Latencia: ${result.latency_ms || 0}ms`;
+    } else if (result.source === 'heuristic_fallback') {
+      originNoticeBox.className = 'mt-3.5 p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-amber-950/40 border-amber-500/40 text-amber-200';
+      originDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0';
+      originTitle.textContent = `⚠️ RESPUESTA DE PRUEBA (FALLBACK LOCAL)`;
+      originSubtitle.textContent = `• Falló la conexión con ${result.attempted_provider || 'la API'}: "${result.fallback_reason || 'Revisa tu clave'}".`;
+      originLatency.className = 'font-mono text-[11px] px-2.5 py-1 rounded bg-slate-900 border border-amber-500/30 text-amber-300 shrink-0 self-start sm:self-auto';
+      originLatency.textContent = `Simulado (Local)`;
+    } else {
+      originNoticeBox.className = 'mt-3.5 p-3 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-900/90 border-slate-700 text-slate-300';
+      originDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0';
+      originTitle.textContent = `ℹ️ RESPUESTA DE PRUEBA (MOTOR HEURÍSTICO)`;
+      originSubtitle.textContent = `• Generada localmente sin consumir API porque no hay API Key configurada.`;
+      originLatency.className = 'font-mono text-[11px] px-2.5 py-1 rounded bg-slate-950 border border-slate-700 text-slate-400 shrink-0 self-start sm:self-auto';
+      originLatency.textContent = `Modo Prueba`;
+    }
+
     // Causa Raíz
     rootCauseText.textContent = data.root_cause || 'Causa no determinada.';
 
@@ -685,6 +718,91 @@ document.addEventListener('DOMContentLoaded', () => {
       btnSaveKeyServer.textContent = 'Guardar ambas en .env del servidor';
     }
   });
+
+  // Pruebas de Conexión de API Keys
+  if (btnTestGeminiKey) {
+    btnTestGeminiKey.addEventListener('click', async () => {
+      const key = inputGeminiApiKey.value.trim();
+      const model = selectGeminiModel.value === 'custom'
+        ? (inputCustomGeminiModel.value.trim() || 'gemini-2.5-flash')
+        : selectGeminiModel.value;
+
+      if (!key) {
+        geminiTestStatus.className = 'text-[11px] text-amber-400 font-mono';
+        geminiTestStatus.textContent = 'Ingresa una clave primero';
+        return;
+      }
+
+      geminiTestStatus.className = 'text-[11px] text-sky-400 font-mono animate-pulse';
+      geminiTestStatus.textContent = 'Probando conexión...';
+      btnTestGeminiKey.disabled = true;
+
+      try {
+        const res = await fetch('api.php?action=test_connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: 'gemini', key: key, model: model })
+        });
+        const data = await res.json();
+        if (data.success) {
+          geminiTestStatus.className = 'text-[11px] text-emerald-400 font-mono';
+          geminiTestStatus.textContent = `✅ OK (${data.latency_ms}ms)`;
+          showToast(`¡Google Gemini conectado con éxito! (${data.latency_ms}ms)`);
+        } else {
+          geminiTestStatus.className = 'text-[11px] text-rose-400 font-mono';
+          geminiTestStatus.textContent = `❌ ${data.error.slice(0, 35)}...`;
+          showToast(data.error, 'error');
+        }
+      } catch (e) {
+        geminiTestStatus.className = 'text-[11px] text-rose-400 font-mono';
+        geminiTestStatus.textContent = '❌ Error de red';
+      } finally {
+        btnTestGeminiKey.disabled = false;
+      }
+    });
+  }
+
+  if (btnTestOpenAiKey) {
+    btnTestOpenAiKey.addEventListener('click', async () => {
+      const key = inputOpenAiApiKey.value.trim();
+      const model = selectOpenAiModel.value === 'custom'
+        ? (inputCustomOpenAiModel.value.trim() || 'gpt-4o-mini')
+        : selectOpenAiModel.value;
+
+      if (!key) {
+        openAiTestStatus.className = 'text-[11px] text-amber-400 font-mono';
+        openAiTestStatus.textContent = 'Ingresa una clave primero';
+        return;
+      }
+
+      openAiTestStatus.className = 'text-[11px] text-indigo-400 font-mono animate-pulse';
+      openAiTestStatus.textContent = 'Probando conexión...';
+      btnTestOpenAiKey.disabled = true;
+
+      try {
+        const res = await fetch('api.php?action=test_connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: 'openai', key: key, model: model })
+        });
+        const data = await res.json();
+        if (data.success) {
+          openAiTestStatus.className = 'text-[11px] text-emerald-400 font-mono';
+          openAiTestStatus.textContent = `✅ OK (${data.latency_ms}ms)`;
+          showToast(`¡OpenAI conectado con éxito! (${data.latency_ms}ms)`);
+        } else {
+          openAiTestStatus.className = 'text-[11px] text-rose-400 font-mono';
+          openAiTestStatus.textContent = `❌ ${data.error.slice(0, 35)}...`;
+          showToast(data.error, 'error');
+        }
+      } catch (e) {
+        openAiTestStatus.className = 'text-[11px] text-rose-400 font-mono';
+        openAiTestStatus.textContent = '❌ Error de red';
+      } finally {
+        btnTestOpenAiKey.disabled = false;
+      }
+    });
+  }
 
   // Comprobar estado del Backend
   async function checkServerStatus() {

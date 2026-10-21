@@ -49,7 +49,7 @@ $openaiModelDefault = getenv('OPENAI_MODEL') ?: ($envVars['OPENAI_MODEL'] ?? 'gp
 // Configuración Google Gemini
 $geminiApiKeyEnv = getenv('GEMINI_API_KEY') ?: (getenv('GOOGLE_API_KEY') ?: ($envVars['GEMINI_API_KEY'] ?? ($envVars['GOOGLE_API_KEY'] ?? '')));
 $geminiApiUrl = getenv('GEMINI_API_URL') ?: ($envVars['GEMINI_API_URL'] ?? 'https://generativelanguage.googleapis.com/v1beta');
-$geminiModelDefault = getenv('GEMINI_MODEL') ?: ($envVars['GEMINI_MODEL'] ?? 'gemini-1.5-flash');
+$geminiModelDefault = getenv('GEMINI_MODEL') ?: ($envVars['GEMINI_MODEL'] ?? 'gemini-2.5-flash');
 
 // Proveedor por defecto
 $defaultProvider = getenv('AI_PROVIDER') ?: ($envVars['AI_PROVIDER'] ?? 'auto');
@@ -85,7 +85,7 @@ if ($action === 'save_key' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $content .= "AI_PROVIDER={$newProvider}\n\n";
     $content .= "# Google Gemini API\n";
     $content .= "GEMINI_API_KEY={$newGeminiKey}\n";
-    $content .= "GEMINI_MODEL=" . ($newGeminiModel ?: 'gemini-1.5-flash') . "\n";
+    $content .= "GEMINI_MODEL=" . ($newGeminiModel ?: 'gemini-2.5-flash') . "\n";
     $content .= "GEMINI_API_URL=" . ($geminiApiUrl ?: 'https://generativelanguage.googleapis.com/v1beta') . "\n\n";
     $content .= "# OpenAI API\n";
     $content .= "OPENAI_API_KEY={$newOpenAiKey}\n";
@@ -155,7 +155,7 @@ if ($requestedProvider === 'gemini') {
 
 // Ejecutar proveedor seleccionado
 if ($targetProvider === 'gemini') {
-    $modelToUse = !empty($requestedModel) && str_starts_with($requestedModel, 'gemini') ? $requestedModel : $geminiModelDefault;
+    $modelToUse = !empty($requestedModel) ? $requestedModel : $geminiModelDefault;
     $geminiResult = callGeminiDiagnostic($effectiveGeminiKey, $geminiApiUrl, $modelToUse, $errorText, $contextTag);
 
     if ($geminiResult['success']) {

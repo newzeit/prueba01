@@ -58,11 +58,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Inputs Modal Google Gemini
   const inputGeminiApiKey = document.getElementById('inputGeminiApiKey');
   const selectGeminiModel = document.getElementById('selectGeminiModel');
+  const inputCustomGeminiModel = document.getElementById('inputCustomGeminiModel');
   const btnToggleGeminiKey = document.getElementById('btnToggleGeminiKey');
 
   // Inputs Modal OpenAI
   const inputOpenAiApiKey = document.getElementById('inputOpenAiApiKey');
   const selectOpenAiModel = document.getElementById('selectOpenAiModel');
+  const inputCustomOpenAiModel = document.getElementById('inputCustomOpenAiModel');
   const btnToggleOpenAiKey = document.getElementById('btnToggleOpenAiKey');
 
   // Proveedor Preferido Modal
@@ -88,9 +90,49 @@ document.addEventListener('DOMContentLoaded', () => {
   // Cargar llaves y modelos guardados en localStorage
   inputGeminiApiKey.value = localStorage.getItem('logtrace_gemini_key') || '';
   inputOpenAiApiKey.value = localStorage.getItem('logtrace_openai_key') || '';
-  selectGeminiModel.value = localStorage.getItem('logtrace_gemini_model') || 'gemini-1.5-flash';
-  selectOpenAiModel.value = localStorage.getItem('logtrace_openai_model') || 'gpt-4o-mini';
+
+  const storedGeminiModel = localStorage.getItem('logtrace_gemini_model') || 'gemini-2.5-flash';
+  const hasGeminiOption = Array.from(selectGeminiModel.options).some(o => o.value === storedGeminiModel && o.value !== 'custom');
+  if (hasGeminiOption) {
+    selectGeminiModel.value = storedGeminiModel;
+    inputCustomGeminiModel.classList.add('hidden');
+  } else {
+    selectGeminiModel.value = 'custom';
+    inputCustomGeminiModel.value = storedGeminiModel;
+    inputCustomGeminiModel.classList.remove('hidden');
+  }
+
+  const storedOpenAiModel = localStorage.getItem('logtrace_openai_model') || 'gpt-4o-mini';
+  const hasOpenAiOption = Array.from(selectOpenAiModel.options).some(o => o.value === storedOpenAiModel && o.value !== 'custom');
+  if (hasOpenAiOption) {
+    selectOpenAiModel.value = storedOpenAiModel;
+    inputCustomOpenAiModel.classList.add('hidden');
+  } else {
+    selectOpenAiModel.value = 'custom';
+    inputCustomOpenAiModel.value = storedOpenAiModel;
+    inputCustomOpenAiModel.classList.remove('hidden');
+  }
+
   selectDefaultProvider.value = activeProvider;
+
+  // Toggle inputs personalizados
+  selectGeminiModel.addEventListener('change', () => {
+    if (selectGeminiModel.value === 'custom') {
+      inputCustomGeminiModel.classList.remove('hidden');
+      inputCustomGeminiModel.focus();
+    } else {
+      inputCustomGeminiModel.classList.add('hidden');
+    }
+  });
+
+  selectOpenAiModel.addEventListener('change', () => {
+    if (selectOpenAiModel.value === 'custom') {
+      inputCustomOpenAiModel.classList.remove('hidden');
+      inputCustomOpenAiModel.focus();
+    } else {
+      inputCustomOpenAiModel.classList.add('hidden');
+    }
+  });
 
   // Sincronizar UI de Provider Pills
   function updateProviderPillsUI() {
@@ -227,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const geminiKey = localStorage.getItem('logtrace_gemini_key') || '';
       const openAiKey = localStorage.getItem('logtrace_openai_key') || '';
-      const geminiModel = localStorage.getItem('logtrace_gemini_model') || 'gemini-1.5-flash';
+      const geminiModel = localStorage.getItem('logtrace_gemini_model') || 'gemini-2.5-flash';
       const openAiModel = localStorage.getItem('logtrace_openai_model') || 'gpt-4o-mini';
 
       const headers = {
@@ -584,8 +626,12 @@ document.addEventListener('DOMContentLoaded', () => {
   btnSaveSettings.addEventListener('click', () => {
     const gKey = inputGeminiApiKey.value.trim();
     const oKey = inputOpenAiApiKey.value.trim();
-    const gModel = selectGeminiModel.value;
-    const oModel = selectOpenAiModel.value;
+    const gModel = selectGeminiModel.value === 'custom'
+      ? (inputCustomGeminiModel.value.trim() || 'gemini-2.5-flash')
+      : selectGeminiModel.value;
+    const oModel = selectOpenAiModel.value === 'custom'
+      ? (inputCustomOpenAiModel.value.trim() || 'gpt-4o-mini')
+      : selectOpenAiModel.value;
     const defProvider = selectDefaultProvider.value;
 
     localStorage.setItem('logtrace_gemini_key', gKey);
@@ -604,8 +650,12 @@ document.addEventListener('DOMContentLoaded', () => {
   btnSaveKeyServer.addEventListener('click', async () => {
     const gKey = inputGeminiApiKey.value.trim();
     const oKey = inputOpenAiApiKey.value.trim();
-    const gModel = selectGeminiModel.value;
-    const oModel = selectOpenAiModel.value;
+    const gModel = selectGeminiModel.value === 'custom'
+      ? (inputCustomGeminiModel.value.trim() || 'gemini-2.5-flash')
+      : selectGeminiModel.value;
+    const oModel = selectOpenAiModel.value === 'custom'
+      ? (inputCustomOpenAiModel.value.trim() || 'gpt-4o-mini')
+      : selectOpenAiModel.value;
     const defProvider = selectDefaultProvider.value;
 
     try {

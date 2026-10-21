@@ -100,7 +100,12 @@ document.addEventListener('DOMContentLoaded', () => {
   inputGeminiApiKey.value = localStorage.getItem('logtrace_gemini_key') || '';
   inputOpenAiApiKey.value = localStorage.getItem('logtrace_openai_key') || '';
 
-  const storedGeminiModel = localStorage.getItem('logtrace_gemini_model') || 'gemini-2.5-flash';
+  let storedGeminiModel = localStorage.getItem('logtrace_gemini_model') || 'gemini-3.5-flash';
+  // Si tenía guardada una versión antigua inferior a 3.5, migrar automáticamente a 3.5-flash
+  if (storedGeminiModel.startsWith('gemini-1.') || storedGeminiModel.startsWith('gemini-2.')) {
+    storedGeminiModel = 'gemini-3.5-flash';
+    localStorage.setItem('logtrace_gemini_model', storedGeminiModel);
+  }
   const hasGeminiOption = Array.from(selectGeminiModel.options).some(o => o.value === storedGeminiModel && o.value !== 'custom');
   if (hasGeminiOption) {
     selectGeminiModel.value = storedGeminiModel;
@@ -278,7 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const geminiKey = localStorage.getItem('logtrace_gemini_key') || '';
       const openAiKey = localStorage.getItem('logtrace_openai_key') || '';
-      const geminiModel = localStorage.getItem('logtrace_gemini_model') || 'gemini-2.5-flash';
+      const geminiModel = localStorage.getItem('logtrace_gemini_model') || 'gemini-3.5-flash';
       const openAiModel = localStorage.getItem('logtrace_openai_model') || 'gpt-4o-mini';
 
       const headers = {
@@ -662,7 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const gKey = inputGeminiApiKey.value.trim();
     const oKey = inputOpenAiApiKey.value.trim();
     const gModel = selectGeminiModel.value === 'custom'
-      ? (inputCustomGeminiModel.value.trim() || 'gemini-2.5-flash')
+      ? (inputCustomGeminiModel.value.trim() || 'gemini-3.5-flash')
       : selectGeminiModel.value;
     const oModel = selectOpenAiModel.value === 'custom'
       ? (inputCustomOpenAiModel.value.trim() || 'gpt-4o-mini')
@@ -686,7 +691,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const gKey = inputGeminiApiKey.value.trim();
     const oKey = inputOpenAiApiKey.value.trim();
     const gModel = selectGeminiModel.value === 'custom'
-      ? (inputCustomGeminiModel.value.trim() || 'gemini-2.5-flash')
+      ? (inputCustomGeminiModel.value.trim() || 'gemini-3.5-flash')
       : selectGeminiModel.value;
     const oModel = selectOpenAiModel.value === 'custom'
       ? (inputCustomOpenAiModel.value.trim() || 'gpt-4o-mini')
@@ -724,7 +729,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnTestGeminiKey.addEventListener('click', async () => {
       const key = inputGeminiApiKey.value.trim();
       const model = selectGeminiModel.value === 'custom'
-        ? (inputCustomGeminiModel.value.trim() || 'gemini-2.5-flash')
+        ? (inputCustomGeminiModel.value.trim() || 'gemini-3.5-flash')
         : selectGeminiModel.value;
 
       if (!key) {

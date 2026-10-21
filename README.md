@@ -24,8 +24,8 @@ Herramienta web profesional para desarrolladores, DevOps y equipos de soporte. P
    - **Consejo Preventivo:** Recomendaciones técnicas de mejores prácticas para evitar reincidencias en producción.
 
 3. **Soporte Multi-Proveedor de IA:**
-   - **Google Gemini API:** Conexión nativa con `generativelanguage.googleapis.com` utilizando JSON Schema estructurado (`responseMimeType: application/json`). Soporta modelos como `gemini-1.5-flash`, `gemini-2.0-flash` y `gemini-1.5-pro`.
-   - **OpenAI API:** Conexión con `api.openai.com/v1/chat/completions` con `response_format: { type: "json_object" }`. Soporta `gpt-4o-mini`, `gpt-4o` y `gpt-3.5-turbo`.
+   - **Google Gemini API:** Conexión nativa con `generativelanguage.googleapis.com` utilizando JSON Schema estructurado (`responseMimeType: application/json`). Soporta modelos contemporáneos de la generación 3.5+ (`gemini-3.5-flash`, `gemini-3.5-pro`, `gemini-3.8-flash`, `gemini-3.8-pro`, y personalizados).
+   - **OpenAI API:** Conexión con `api.openai.com/v1/chat/completions` con `response_format: { type: "json_object" }`. Soporta `gpt-4o-mini`, `gpt-4o`, `o3-mini`, `o1`.
    - **Motor Heurístico Local:** Motor de contingencia integrado para funcionamiento inmediato sin llaves o ante fallos de cuota/red.
 
 ## 📁 Estructura del Proyecto
@@ -55,7 +55,7 @@ AI_PROVIDER=auto
 
 # Google Gemini API
 GEMINI_API_KEY=tu-google-api-key
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-3.5-flash
 
 # OpenAI API
 OPENAI_API_KEY=tu-openai-api-key

@@ -304,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modelToSend = geminiKey ? geminiModel : openAiModel;
       }
 
-      const response = await fetch('api.php', {
+      const response = await fetch('api/analyze', {
         method: 'POST',
         headers: headers,
         body: JSON.stringify({
@@ -701,7 +701,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       btnSaveKeyServer.disabled = true;
       btnSaveKeyServer.textContent = 'Guardando en servidor...';
-      const res = await fetch('api.php?action=save_key', {
+      const res = await fetch('api/save-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -743,7 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btnTestGeminiKey.disabled = true;
 
       try {
-        const res = await fetch('api.php?action=test_connection', {
+        const res = await fetch('api/test-connection', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ provider: 'gemini', key: key, model: model })
@@ -785,7 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btnTestOpenAiKey.disabled = true;
 
       try {
-        const res = await fetch('api.php?action=test_connection', {
+        const res = await fetch('api/test-connection', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ provider: 'openai', key: key, model: model })
@@ -812,7 +812,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Comprobar estado del Backend
   async function checkServerStatus() {
     try {
-      const res = await fetch('api.php?action=status');
+      const res = await fetch('api/status');
       const data = await res.json();
       const localGeminiKey = localStorage.getItem('logtrace_gemini_key');
       const localOpenAiKey = localStorage.getItem('logtrace_openai_key');
